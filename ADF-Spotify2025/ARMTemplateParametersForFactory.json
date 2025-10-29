@@ -1,0 +1,27 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"value": "ADF-Spotify2025"
+		},
+		"AZDataLakeConn_accountKey": {
+			"value": ""
+		},
+		"AZSQLConn_password": {
+			"value": ""
+		},
+		"AZDataLakeConn_properties_typeProperties_url": {
+			"value": "https://storagespotify25.dfs.core.windows.net/"
+		},
+		"AZSQLConn_properties_typeProperties_server": {
+			"value": "azspotifyserver.database.windows.net"
+		},
+		"AZSQLConn_properties_typeProperties_database": {
+			"value": "spotifydb"
+		},
+		"AZSQLConn_properties_typeProperties_userName": {
+			"value": "adminhakkache"
+		}
+	}
+}
