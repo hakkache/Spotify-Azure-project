@@ -8,6 +8,10 @@
 				"dependsOn": [],
 				"userProperties": [],
 				"typeProperties": {
+					"items": {
+						"value": "@pipeline().parameters.loop_input",
+						"type": "Expression"
+					},
 					"activities": [
 						{
 							"name": "AzureSQLToLake",
@@ -136,7 +140,7 @@
 							},
 							"userProperties": [],
 							"typeProperties": {
-								"variableName": "",
+								"variableName": "current",
 								"value": {
 									"value": "@utcNow()",
 									"type": "Expression"
@@ -180,7 +184,7 @@
 												"parameters": {
 													"container": "bronze",
 													"folder": {
-														"value": "@pipeline().parameters.table",
+														"value": "@item().table",
 														"type": "Expression"
 													},
 													"file": "@concat(pipeline().parameters.table,'_',variables('current'))"
@@ -254,7 +258,7 @@
 												"parameters": {
 													"container": "bronze",
 													"folder": {
-														"value": "@{item()}_cdc",
+														"value": "@{item().table}_cdc",
 														"type": "Expression"
 													},
 													"file": "empty.json"
