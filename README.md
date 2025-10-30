@@ -8,16 +8,17 @@ This project implements a **Medallion Architecture** with **Incremental Data Pro
 
 ```
 Azure SQL Database (Source) → Azure Data Factory → Azure Data Lake Gen2 → Azure Databricks → Unity Catalog
-     4 Tables              Orchestration    Bronze/Silver/Gold      Processing         Governance
+     5 Tables                  Orchestration        Bronze/Silver/Gold     Processing          Governance
 ```
 
 ## 📊 Data Flow Architecture
 
 ### Source Data (Azure SQL Database)
-- **dim_user**: User demographics and subscription details
-- **dim_artist**: Artist information and metadata  
-- **dim_date**: Date dimension for time-based analytics
-- **fact_stream**: Streaming events and play history
+- **dimUser**: User demographics and subscription details
+- **dimArtist**: Artist information and metadata  
+- **dimDate**: Date dimension for time-based analytics
+- **dimTrack** : track information and metadata
+- **FactStream**: Streaming events and play history
 
 ### Medallion Architecture Layers
 
@@ -199,14 +200,6 @@ GRANT CREATE SCHEMA ON CATALOG spotify_catalog TO `data-engineers`;
 }
 ```
 
-## 📈 Monitoring and Optimization
-
-### Performance Metrics
-- **Data Freshness**: < 5 minutes latency
-- **Processing Throughput**: 1M+ records/hour
-- **Error Rate**: < 0.1%
-- **Cost Optimization**: Auto-scaling clusters
-
 ### Data Quality Checks
 ```python
 # Implement data validation
@@ -250,12 +243,6 @@ jobs:
           databricks bundle deploy --target prod
 ```
 
-## 📚 Documentation
-
-- [Architecture Deep Dive](docs/architecture.md)
-- [Data Dictionary](docs/data-dictionary.md)
-- [Deployment Guide](docs/deployment.md)
-- [Troubleshooting](docs/troubleshooting.md)
 
 ## 🤝 Contributing
 
@@ -269,12 +256,6 @@ jobs:
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 📞 Support
-
-For questions and support:
-- Create an issue in this repository
-- Contact the data engineering team
-- Check the troubleshooting guide
 
 ---
 
