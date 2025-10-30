@@ -1,14 +1,14 @@
 # Spotify Azure Data Engineering Project
 
-A comprehensive data engineering solution built on Azure cloud services for processing Spotify streaming data using modern data architecture patterns and Databricks Delta Live Tables (DLT).
+A comprehensive data engineering solution built on Azure cloud services for processing Spotify streaming data using modern data architecture patterns, advanced Azure Data Factory strategies, and Databricks Delta Live Tables (DLT).
 
 ## 🏗️ Architecture Overview
 
-This project implements a **Medallion Architecture** with **Incremental Data Processing** using Azure cloud services and Databricks Delta Live Tables:
+This project implements a **Medallion Architecture** with **Advanced Incremental Data Processing** using Azure cloud services and sophisticated ADF orchestration patterns:
 
 ```
 Azure SQL Database (Source) → Azure Data Factory → Azure Data Lake Gen2 → Databricks DLT → Unity Catalog
-     5 Tables                   Orchestration        Bronze/Silver/Gold      Processing        Governance
+     5 Tables                 Advanced Orchestration  Bronze/Silver/Gold    Processing       Governance
 ```
 
 ## 📊 Data Flow Architecture
@@ -35,27 +35,235 @@ Azure SQL Database (Source) → Azure Data Factory → Azure Data Lake Gen2 → 
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## 🔄 Incremental Data Pipeline
+## 🔧 Azure Data Factory Advanced Strategies
 
-### Azure Data Factory + AutoLoader Implementation
-```
-Source Changes → ADF Triggers → AutoLoader Detection → Stream Processing → Delta Merge → SCD Type 2 Updates
+### 1. **Parameterized Pipeline Architecture**
+
+#### Master Pipeline (Incremental_loop.json)
+```json
+{
+  "parameters": {
+    "loop_input": {
+      "type": "array",
+      "defaultValue": [
+        {
+          "schema": "dbo",
+          "table": "DimUser",
+          "cdc_col": "updated_at",
+          "from_date": ""
+        },
+        {
+          "schema": "dbo", 
+          "table": "FactStream",
+          "cdc_col": "stream_timestamp",
+          "from_date": ""
+        }
+      ]
+    }
+  }
+}
 ```
 
-**Key Features:**
-- **Change Data Capture**: Tracks modifications using watermarks
-- **Exactly-Once Processing**: Ensures data consistency
-- **Schema Evolution**: Handles structure changes automatically
-- **Checkpoint Management**: Enables recovery and restart capabilities
+#### Key Features:
+- **Dynamic Table Processing**: Single pipeline handles multiple tables
+- **Configurable CDC Columns**: Each table can have different change tracking columns
+- **Flexible Schema Support**: Supports multiple database schemas
+- **Backfill Capability**: `from_date` parameter enables historical data loading
+
+### 2. **Dynamic Dataset Strategy**
+
+#### Parameterized Parquet Dataset
+```json
+{
+  "name": "Parquet_dynamic",
+  "parameters": {
+    "container": { "type": "string" },
+    "folder": { "type": "string" },
+    "file": { "type": "string" }
+  },
+  "typeProperties": {
+    "location": {
+      "fileName": { "value": "@dataset().file" },
+      "folderPath": { "value": "@dataset().folder" },
+      "fileSystem": { "value": "@dataset().container" }
+    }
+  }
+}
+```
+
+#### Benefits:
+- **Single Dataset Definition**: Reusable across all tables and layers
+- **Dynamic Path Generation**: Runtime path construction based on parameters
+- **Cost Optimization**: Reduces ADF resource consumption
+- **Maintenance Efficiency**: One dataset to maintain instead of multiple
+
+### 3. **Advanced Change Data Capture (CDC) Implementation**
+
+#### CDC Tracking Mechanism
+```sql
+-- Dynamic CDC Query with Parameterization
+SELECT * FROM @{item().schema}.@{item().table} 
+WHERE @{item().cdc_col} > '@{if(empty(item().from_date), activity('last_cdc').output.value[0].cdc, item().from_date)}'
+```
+
+#### CDC State Management
+```json
+// CDC Checkpoint Storage
+{
+  "container": "bronze",
+  "folder": "@{item().table}_cdc",
+  "file": "cdc.json"
+}
+```
+
+#### Key CDC Features:
+- **Watermark-based Processing**: Tracks last processed timestamp per table
+- **Backfill Support**: Can process historical data from specific dates
+- **Fault Tolerance**: Maintains CDC state for recovery
+- **Cross-table Consistency**: Independent CDC tracking per table
+
+### 4. **Smart File Management & Optimization**
+
+#### Empty File Cleanup Strategy
+```json
+{
+  "name": "DeleteEmptyFile",
+  "type": "Delete",
+  "condition": "@greater(activity('AzureSQLToLake').output.dataRead,0)",
+  "ifFalseActivities": [
+    {
+      "dataset": "Parquet_dynamic",
+      "parameters": {
+        "file": "@concat(item().table,'_',variables('current'))"
+      }
+    }
+  ]
+}
+```
+
+#### File Naming Convention
+```
+Pattern: {TableName}_{Timestamp}.parquet
+Example: DimUser_2025-10-30T14:30:00Z.parquet
+```
+
+### 5. **ForEach Loop with Parallel Processing**
+
+#### Parallel Table Processing
+```json
+{
+  "name": "ForEach1",
+  "type": "ForEach",
+  "typeProperties": {
+    "items": "@pipeline().parameters.loop_input",
+    "isSequential": false,
+    "batchCount": 20,
+    "activities": [...]
+  }
+}
+```
+
+#### Advantages:
+- **Concurrent Execution**: Multiple tables processed simultaneously
+- **Scalable Architecture**: Easily add new tables to processing
+- **Resource Optimization**: Efficient use of ADF compute resources
+- **Reduced Processing Time**: Parallel execution reduces total runtime
+
+### 6. **Error Handling & Monitoring**
+
+#### Pipeline Failure Alerting
+```json
+{
+  "name": "Alert",
+  "type": "WebActivity",
+  "dependsOn": [
+    {
+      "activity": "ForEach1",
+      "dependencyConditions": ["Failed"]
+    }
+  ],
+  "typeProperties": {
+    "method": "POST",
+    "url": "https://prod-28.northcentralus.logic.azure.com/workflows/.../triggers/...",
+    "body": {
+      "pipeline_name": "@{pipeline().Pipeline}",
+      "pipeline_id": "@{pipeline().RunId}"
+    }
+  }
+}
+```
+
+#### Monitoring Features:
+- **Logic Apps Integration**: Automated failure notifications
+- **Pipeline Tracking**: Unique run ID tracking
+- **Dependency-based Execution**: Smart failure handling
+- **Custom Alert Payloads**: Detailed error information
+
+### 7. **Backfilling Strategy**
+
+#### Historical Data Loading
+```json
+// Backfill Configuration Example
+{
+  "schema": "dbo",
+  "table": "FactStream", 
+  "cdc_col": "stream_timestamp",
+  "from_date": "2024-01-01"  // Backfill from specific date
+}
+```
+
+#### Backfill Process:
+1. **Set from_date**: Specify historical start date
+2. **Bypass CDC**: Uses from_date instead of last CDC value
+3. **Incremental Processing**: Processes data in chunks
+4. **State Update**: Updates CDC after successful load
+
+### 8. **Performance Optimization Strategies**
+
+#### Query Optimization
+- **Partition Elimination**: Leverages SQL Server partitioning
+- **Index Utilization**: Optimized WHERE clauses on CDC columns
+- **Batch Size Control**: Configurable chunk sizes for large tables
+- **Connection Pooling**: Efficient database connection management
+
+#### Storage Optimization
+- **Snappy Compression**: Parquet files with snappy compression
+- **Partitioning Strategy**: Date-based partitioning in Data Lake
+- **File Size Management**: Optimal file sizes for Spark processing
+- **Delta Lake Integration**: ACID transactions and performance features
+
+## 🔄 Incremental Data Pipeline Flow
+
+### Complete Pipeline Execution Flow
+```
+1. Pipeline Trigger → 2. Parameter Resolution → 3. ForEach Table Loop
+                                                      ↓
+8. CDC State Update ← 7. Data Validation ← 6. File Management ← 5. Data Copy
+                                                      ↓
+                      9. Success/Failure Notification
+```
+
+### Detailed Step Breakdown:
+
+1. **Trigger Activation**: Scheduled or event-based pipeline start
+2. **Dynamic Parameter Loading**: Table configurations loaded from parameters
+3. **Parallel Table Processing**: ForEach loop initiates concurrent processing
+4. **CDC Lookup**: Retrieves last processed timestamp per table
+5. **Incremental Data Copy**: Extracts only changed records
+6. **Smart File Management**: Creates or deletes files based on data presence
+7. **Data Validation**: Ensures data quality and completeness
+8. **CDC State Update**: Updates watermark for next execution
+9. **Monitoring & Alerting**: Success/failure notifications
 
 ## 🛠️ Technology Stack
 
 ### Azure Services
-- **Azure Data Factory**: Pipeline orchestration and scheduling
+- **Azure Data Factory**: Advanced pipeline orchestration with parameterization
 - **Azure Databricks**: Spark-based data processing with DLT
-- **Azure Data Lake Storage Gen2**: Scalable data storage
-- **Azure SQL Database**: Source system with 5 core tables
+- **Azure Data Lake Storage Gen2**: Scalable data storage with hierarchical namespace
+- **Azure SQL Database**: Source system with CDC capabilities
 - **Azure Key Vault**: Secrets and credential management
+- **Azure Logic Apps**: Automated alerting and notifications
 
 ### Processing Technologies
 - **Apache Spark**: Distributed data processing
@@ -85,26 +293,24 @@ Spotify-Azure-project/
 │           │   │   │           └── utils.py
 │           │   │   └── silver/
 │           │   │       └── Silver_Dimensions.py
-│           │   ├── utils/
-│           │   │   └── transformations.py
 │           │   ├── resources/
 │           │   │   ├── spotify_databricks.job.yml
 │           │   │   └── spotify_databricks.pipeline.yml
 │           │   ├── databricks.yml
 │           │   ├── pyproject.toml
 │           │   └── requirements.txt
-├── dataset/
-│   ├── AzureSQLDataSet.json
-│   ├── JSON_DYNAMIC.json
-│   └── Parquet_dynamic.json
+├── dataset/                    # ADF Dynamic Datasets
+│   ├── AzureSQLDataSet.json   # Source SQL dataset
+│   ├── JSON_DYNAMIC.json      # Parameterized JSON dataset
+│   └── Parquet_dynamic.json   # Parameterized Parquet dataset
 ├── factory/
-│   └── ADF-Spotify2025.json
-├── linkedService/
-│   ├── AZDataLakeConn.json
-│   └── AZSQLConn.json
-├── pipeline/
-│   ├── Incremental_ingestion.json
-│   └── Incremental_loop.json
+│   └── ADF-Spotify2025.json   # Main ADF resource definition
+├── linkedService/              # ADF Connection Definitions
+│   ├── AZDataLakeConn.json    # Data Lake connection
+│   └── AZSQLConn.json         # SQL Database connection
+├── pipeline/                   # ADF Pipeline Definitions
+│   ├── Incremental_ingestion.json  # Single table processing
+│   └── Incremental_loop.json       # Multi-table orchestration
 ├── manifest.mf
 ├── publish_config.json
 └── README.md
@@ -127,7 +333,13 @@ git clone https://github.com/hakkache/Spotify-Azure-project.git
 cd Spotify-Azure-project
 ```
 
-2. **Configure Databricks Asset Bundle**
+2. **Configure Azure Data Factory**
+```bash
+# Deploy ADF pipelines and datasets
+az datafactory pipeline create --factory-name "your-adf" --name "Incremental_loop" --pipeline @pipeline/Incremental_loop.json
+```
+
+3. **Configure Databricks Asset Bundle**
 ```yaml
 # databricks.yml
 bundle:
@@ -143,11 +355,6 @@ targets:
       root_path: /Workspace/Users/your-user/.bundle/${bundle.name}/${bundle.target}
 ```
 
-3. **Install Dependencies**
-```bash
-pip install -r requirements.txt
-```
-
 4. **Deploy with Asset Bundles**
 ```bash
 databricks bundle deploy --target dev
@@ -155,6 +362,17 @@ databricks bundle run spotify_etl_job --target dev
 ```
 
 ## 💾 Data Processing Examples
+
+### Azure Data Factory - Dynamic Processing
+```json
+// Dynamic SQL Query with CDC
+{
+  "sqlReaderQuery": {
+    "value": "SELECT * FROM @{item().schema}.@{item().table} WHERE @{item().cdc_col} > '@{if(empty(item().from_date), activity('last_cdc').output.value[0].cdc, item().from_date)}'",
+    "type": "Expression"
+  }
+}
+```
 
 ### Bronze Layer - Raw Ingestion (AutoLoader)
 ```python
@@ -168,12 +386,12 @@ df_stream = spark.readStream.format("cloudFiles") \
 
 ### Silver Layer - Data Transformation
 ```python
-# Clean and validate data
+# Clean and validate data with deduplication
 df_user = df_user.withColumn("user_name", upper(col("user_name")))
 df_user = df_user_object.dropColumns(df_user, ['_rescued_data'])
 df_user = df_user.dropDuplicates(['user_id'])
 
-# Write to Silver layer
+# Write to Silver layer with checkpointing
 df_user.writeStream.format("delta") \
     .outputMode("append") \
     .option("checkpointLocation", "abfss://silver@storage/checkpoint") \
@@ -196,7 +414,7 @@ def dimuser_staging():
     df = spark.readStream.table("spotify_catalog.silver.dimuser")
     return df
 
-# Create SCD Type 2 flow
+# Create SCD Type 2 flow with auto CDC
 dlt.create_auto_cdc_flow(
     target="dimuser",
     source="dimuser_staging",
@@ -211,15 +429,34 @@ dlt.create_auto_cdc_flow(
 
 ## 🔧 Configuration Management
 
-### Unity Catalog Setup
-```sql
--- Create catalog and schema
-CREATE CATALOG IF NOT EXISTS spotify_catalog;
-CREATE SCHEMA IF NOT EXISTS spotify_catalog.processed_data;
+### ADF Pipeline Parameters
+```json
+{
+  "parameters": {
+    "loop_input": {
+      "type": "array",
+      "defaultValue": [
+        {
+          "schema": "dbo",
+          "table": "DimUser", 
+          "cdc_col": "updated_at",
+          "from_date": ""
+        }
+      ]
+    }
+  }
+}
+```
 
--- Grant permissions
-GRANT USE CATALOG ON CATALOG spotify_catalog TO `data-engineers`;
-GRANT CREATE SCHEMA ON CATALOG spotify_catalog TO `data-engineers`;
+### Dynamic Dataset Configuration
+```json
+{
+  "parameters": {
+    "container": { "type": "string" },
+    "folder": { "type": "string" },
+    "file": { "type": "string" }
+  }
+}
 ```
 
 ### Dependencies (pyproject.toml)
@@ -237,20 +474,6 @@ dev = [
 ]
 ```
 
-### Data Quality Checks
-```python
-# Implement data validation in DLT
-expectations = {
-    "valid_user_id": "user_id IS NOT NULL",
-    "valid_stream_date": "stream_date IS NOT NULL",
-    "positive_duration": "duration_sec > 0"
-}
-
-@dlt.expect_all_or_drop(expectations)
-def clean_fact_stream():
-    return spark.readStream.table("spotify_catalog.bronze.factstream")
-```
-
 ## 🔐 Security and Governance
 
 ### Access Control
@@ -264,28 +487,54 @@ def clean_fact_stream():
 - Column-level lineage for compliance
 - Impact analysis for schema changes
 
-## 🚀 Deployment
+## 🚀 Deployment & Operations
 
-### Azure Data Factory Pipelines
-The project includes two main ADF pipelines:
-- **Incremental_ingestion.json**: Handles data extraction from Azure SQL to Data Lake
-- **Incremental_loop.json**: Orchestrates the incremental processing workflow
+### ADF Pipeline Scheduling
+```json
+{
+  "triggers": [
+    {
+      "name": "DailyTrigger",
+      "type": "ScheduleTrigger",
+      "typeProperties": {
+        "recurrence": {
+          "frequency": "Day",
+          "interval": 1,
+          "startTime": "2025-01-01T02:00:00Z"
+        }
+      }
+    }
+  ]
+}
+```
+
+### Monitoring & Alerting
+- **Pipeline Run Monitoring**: Built-in ADF monitoring
+- **Logic Apps Integration**: Custom failure notifications
+- **Azure Monitor**: Infrastructure and performance monitoring
+- **Data Quality Alerts**: DLT expectation violations
 
 ### CI/CD with GitHub Actions
 ```yaml
-name: Deploy Databricks Asset Bundle
+name: Deploy ADF and Databricks
 on:
   push:
     branches: [main]
 
 jobs:
-  deploy:
+  deploy-adf:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Setup Databricks CLI
+      - name: Deploy ADF
         run: |
-          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          az datafactory pipeline create --factory-name ${{ secrets.ADF_NAME }} \
+            --name "Incremental_loop" --pipeline @pipeline/Incremental_loop.json
+  
+  deploy-databricks:
+    runs-on: ubuntu-latest  
+    steps:
+      - uses: actions/checkout@v3
       - name: Deploy Bundle
         run: |
           databricks bundle deploy --target prod
@@ -296,21 +545,25 @@ jobs:
 
 ## 📈 Key Features Implemented
 
+### Azure Data Factory Advanced Features
+- ✅ **Parameterized Pipelines**: Dynamic table processing
+- ✅ **ForEach Parallel Processing**: Concurrent table loading
+- ✅ **Dynamic Datasets**: Reusable dataset definitions
+- ✅ **CDC State Management**: Watermark-based change tracking
+- ✅ **Smart File Management**: Empty file cleanup
+- ✅ **Error Handling**: Logic Apps integration for alerts
+- ✅ **Backfill Capability**: Historical data loading support
+
 ### Data Quality & Validation
-- **DLT Expectations**: Automated data quality checks
-- **Schema Evolution**: Automatic handling of schema changes
-- **Deduplication**: Removal of duplicate records at each layer
+- ✅ **DLT Expectations**: Automated data quality checks
+- ✅ **Schema Evolution**: Automatic handling of schema changes
+- ✅ **Deduplication**: Removal of duplicate records at each layer
 
 ### Performance Optimization
-- **Delta Lake**: Optimized storage with ACID transactions
-- **Partitioning**: Efficient data organization
-- **Z-Ordering**: Improved query performance
-- **Checkpointing**: Reliable stream processing
-
-### Monitoring & Observability
-- **DLT Pipeline Monitoring**: Built-in monitoring and alerting
-- **Unity Catalog Lineage**: End-to-end data lineage tracking
-- **Azure Monitor**: Infrastructure monitoring integration
+- ✅ **Delta Lake**: Optimized storage with ACID transactions
+- ✅ **Partitioning**: Efficient data organization
+- ✅ **Parallel Processing**: Concurrent pipeline execution
+- ✅ **Checkpointing**: Reliable stream processing
 
 ## 🤝 Contributing
 
@@ -322,13 +575,15 @@ jobs:
 
 ## 📝 Project Highlights
 
+- ✅ **Advanced ADF Orchestration**: Sophisticated pipeline patterns
+- ✅ **Parameterized Architecture**: Highly configurable and maintainable
+- ✅ **Change Data Capture**: Efficient incremental processing
+- ✅ **Backfill Support**: Historical data loading capabilities
+- ✅ **Dynamic Datasets**: Cost-effective and scalable design
+- ✅ **Error Handling**: Robust monitoring and alerting
 - ✅ **Medallion Architecture**: Bronze, Silver, Gold layers
 - ✅ **Delta Live Tables**: Declarative ETL framework
-- ✅ **Incremental Processing**: Efficient data pipeline
-- ✅ **SCD Type 2**: Historical data tracking
-- ✅ **Data Quality**: Built-in validation and expectations
 - ✅ **Unity Catalog**: Data governance and security
-- ✅ **Azure Integration**: Full Azure ecosystem utilization
 
 ## 📄 License
 
@@ -336,4 +591,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Built with ❤️ using Azure Cloud Services, Databricks Delta Live Tables, and Modern Data Engineering practices**
+**Built with ❤️ using Advanced Azure Data Factory Patterns, Databricks Delta Live Tables, and Modern Data Engineering Best Practices**
