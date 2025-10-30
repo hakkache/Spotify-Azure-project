@@ -1,0 +1,12 @@
+{
+	"name": "AzureSQLDataSet",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "AZSQLConn",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "AzureSqlTable",
+		"schema": []
+	}
+}

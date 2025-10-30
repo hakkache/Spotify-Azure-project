@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "config": {
+    "bundle": {
+      "git": {
+        "bundle_root_path": "."
+      }
+    },
+    "workspace": {
+      "file_path": "/Workspace/Users/whisperswisdom53_gmail.com#ext#@whisperswisdom53gmail.onmicrosoft.com/.bundle/spotify_databricks/dev/files"
+    },
+    "resources": {},
+    "presets": {
+      "source_linked_deployment": false
+    }
+  },
+  "extra": {
+    "git_folder_path": "/Workspace/Users/whisperswisdom53_gmail.com#ext#@whisperswisdom53gmail.onmicrosoft.com/spotify_databricks"
+  }
+}

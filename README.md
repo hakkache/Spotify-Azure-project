@@ -97,8 +97,8 @@ Source Changes → AutoLoader Detection → Stream Processing → Delta Merge �
 
 1. **Clone Repository**
 ```bash
-git clone <your-repo-url>
-cd spotify-azure-data-engineering
+git clone https://github.com/hakkache/Spotify-Azure-project.git
+cd Spotify-Azure-project
 ```
 
 2. **Configure Databricks Asset Bundle**
